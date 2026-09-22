@@ -186,3 +186,58 @@ class PolicyQueues:
     dest['traffic_convention'][...] = traffic_convention.reshape(
       dest['traffic_convention'].shape)
     dest['action_t'][...] = action_t.reshape(dest['action_t'].shape)
+
+  def after_run(self, outputs: dict[str, np.ndarray]) -> None:
+    """The history lives here, so a frame's outputs change nothing."""
+
+
+class StatefulInputs:
+  """A model that carries its own history (spec.stateful).
+
+  openpilot's modeld at bf3e363 feeds the warp straight in as new_img, the
+  rising-edge desire pulse as `desire`, and each next_X output back as state_X
+  on the next frame, all zeros after warmup. Here the state lives in the
+  engine's own staging buffers, so after_run is one copy per state tensor.
+
+  ponytail: the state crosses the host each frame (~10 MB for the big model,
+  under 1 ms of the 19 ms CoreML frame measured on an M-series Mac); keep it
+  on the device if a backend ever makes that the bottleneck.
+  """
+
+  def __init__(self, spec: ModelSpec, dest: dict[str, np.ndarray]):
+    self.spec = spec
+    self.dest = dest
+    self.state_names = spec.state_names
+    offset = 0
+    self._packed_layout = []
+    for size, shape in zip(spec.packed_sizes, spec.packed_shapes.values(), strict=True):
+      self._packed_layout.append((offset, offset + size, shape))
+      offset += size
+
+  def reset(self) -> None:
+    for name in self.state_names:
+      self.dest[name][...] = 0
+
+  def step_into(self, warped: np.ndarray, packed: np.ndarray,
+                dest: dict[str, np.ndarray]) -> None:
+    spec = self.spec
+    if warped.shape != spec.warped_shape:
+      raise ValueError(f"warped {warped.shape} != {spec.warped_shape}")
+    if packed.size != spec.packed_nelem:
+      raise ValueError(f"packed {packed.size} != {spec.packed_nelem}")
+    desire, traffic_convention, action_t, _prev_feat = (
+      packed[a:b].reshape(shape) for a, b, shape in self._packed_layout)
+    dest['new_img'][...] = warped.reshape(dest['new_img'].shape)
+    for name, value in (('desire', desire), ('traffic_convention', traffic_convention),
+                        ('action_t', action_t)):
+      dest[name][...] = value.reshape(dest[name].shape)
+
+  def after_run(self, outputs: dict[str, np.ndarray]) -> None:
+    for name in self.state_names:
+      np.copyto(self.dest[name], outputs[f'next_{name}'].reshape(self.dest[name].shape),
+                casting='unsafe')
+
+
+def make_queues(spec: ModelSpec, dest: dict[str, np.ndarray]):
+  """Whatever turns one wire frame into the engine's inputs for this model."""
+  return StatefulInputs(spec, dest) if spec.stateful else PolicyQueues(spec)

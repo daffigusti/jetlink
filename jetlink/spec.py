@@ -39,6 +39,19 @@ class ModelSpec:
   output_slices: dict[str, slice]
   checkpoint: str | None
 
+  # --- stateful models ---
+  # comma's Sept 2026 export (openpilot 64f9b47) moved the history queues into
+  # the graph: one frame in as new_img, and every state_X input comes back as a
+  # next_X output to feed the next frame. The history is the same length as the
+  # queues below, so the wire does not change; see queues.StatefulInputs.
+  @property
+  def stateful(self) -> bool:
+    return 'new_img' in self.input_shapes
+
+  @property
+  def state_names(self) -> list[str]:
+    return [n for n in self.input_shapes if f'next_{n}' in self.output_shapes]
+
   # --- vision ---
   @property
   def img_shape(self) -> tuple[int, ...]:
@@ -50,7 +63,9 @@ class ModelSpec:
 
   @property
   def model_hw(self) -> tuple[int, int]:
-    return self.img_shape[2], self.img_shape[3]
+    # img is (1, 12, H, W), new_img (2, 6, H, W)
+    shape = self.input_shapes['new_img' if self.stateful else 'img']
+    return shape[2], shape[3]
 
   @property
   def img_buf_shape(self) -> tuple[int, int, int, int]:
@@ -71,11 +86,22 @@ class ModelSpec:
   @property
   def feat_dim(self) -> int:
     """Flattened per-frame feature size. (1,32,32,512) -> 16384."""
+    if self.stateful:
+      return self.input_shapes['state_feat_q'][-1]
     fb = self.input_shapes['features_buffer']
     return math.prod(fb[2:])
 
   @property
   def packed_shapes(self) -> dict[str, tuple[int, ...]]:
+    if self.stateful:
+      # prev_feat is still sent so a comma packs every model the same way; the
+      # graph keeps its own features and the server ignores it
+      return {
+        'desire': tuple(self.input_shapes['desire']),
+        'traffic_convention': tuple(self.input_shapes['traffic_convention']),
+        'action_t': tuple(self.input_shapes['action_t']),
+        'prev_feat': (1, self.feat_dim),
+      }
     dp = self.input_shapes['desire_pulse']
     tc = self.input_shapes['traffic_convention']
     at = self.input_shapes['action_t']
