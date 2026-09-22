@@ -52,6 +52,10 @@ class UsbBulkTransport(StreamTransport):
     self.interface = interface
     self.ep_in = ep_in
     self.ep_out = ep_out
+    # Where the device was when opened. A gadget that drops off the bus and
+    # comes back is a new device at a new address, and this handle is stale
+    # even though the vid:pid is back; see alive().
+    self._at = _address(handle)
     self._zero_copy_reads = True
     # libusb has no vectored bulk write, so messages are gathered here. Reused
     # so the steady state does not allocate half a megabyte per frame.
@@ -82,6 +86,22 @@ class UsbBulkTransport(StreamTransport):
       _close_quietly(handle, context)
       raise LinkError(f"could not open {vid:04x}:{pid:04x}: {e}") from e
     return cls(handle, context, timeout_ms, interface, ep_in, ep_out)
+
+  def alive(self) -> bool:
+    """Is the device this handle was opened on still enumerated?
+
+    macOS answered reads on a handle to a detached gadget with timeouts, not
+    LIBUSB_ERROR_NO_DEVICE, and the session sat in 'connected' for good while
+    the comma presented a fresh gadget nobody opened. Enumeration is what the
+    waiting loop already does every two seconds, so it costs the same here.
+    """
+    if self._at is None or self.context is None:
+      return True
+    try:
+      return any(_address(d) == self._at for d in self.context.getDeviceIterator(skip_on_error=True))
+    except Exception as e:
+      log.warning("cannot enumerate USB devices: %s", e)
+      return True
 
   @staticmethod
   def present(vid: int = JETLINK_VID, pid: int = JETLINK_PID) -> bool:
@@ -189,6 +209,15 @@ def _close_quietly(handle, context) -> None:
       closer()
     except Exception:
       pass
+
+
+def _address(handle_or_device):
+  """(bus, address) of a libusb device or handle; None for a test double."""
+  try:
+    d = handle_or_device.getDevice() if hasattr(handle_or_device, 'getDevice') else handle_or_device
+    return (d.getBusNumber(), d.getDeviceAddress())
+  except Exception:
+    return None
 
 
 def _find_bulk_endpoints(device, interface: int) -> tuple[int, int]:

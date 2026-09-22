@@ -47,6 +47,9 @@ log = logging.getLogger('jetlink.server')
 SLOW_FRAME_US = 60_000
 
 PROGRESS_MIN_INTERVAL = 0.25  # s; the comma only needs a progress bar, not every step
+# See Session.serve_forever. Long enough for a comma that binds the gadget and
+# then starts its client; short enough that a stale handle costs one join.
+HELLO_DEADLINE = 30.0
 
 
 @dataclass
@@ -580,10 +583,21 @@ class Session:
         self.host.session = None
 
   def serve_forever(self) -> None:
+    # A session with no hello is a handle nobody is talking on. Real clients
+    # say hello as soon as the host opens them; one that has not in this long
+    # is a stale open, and closing it lets the serve loop open the gadget
+    # that is actually there.
+    opened = time.monotonic()
     while True:
       try:
         msg = self.t.recv()
       except LinkTimeout:
+        if not self.t.alive():
+          log.info("link closed: the peer left the bus")
+          return
+        if not self.client and time.monotonic() - opened > HELLO_DEADLINE:
+          log.info("link closed: no hello in %.0f s, reopening", HELLO_DEADLINE)
+          return
         continue
       except LinkError as e:
         log.info("link closed: %s", e)

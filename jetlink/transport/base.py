@@ -57,6 +57,12 @@ class Transport(ABC):
     import json
     self.send(msg_type, seq, (json.dumps(obj).encode(),), flags)
 
+  def alive(self) -> bool:
+    """Is the peer still on the other end, as far as the link layer can tell
+    without a message? The default cannot tell and says yes; a USB host can
+    look at the bus, see UsbBulkTransport.alive."""
+    return True
+
   @property
   def lendable(self) -> bool:
     """Could another process take over the IO on this link right now? Only a
