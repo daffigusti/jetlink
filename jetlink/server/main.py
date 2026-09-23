@@ -38,7 +38,7 @@ import time
 from pathlib import Path
 from platform import python_version
 
-from jetlink.server import gpuclock, platform
+from jetlink.server import platform
 from jetlink.server.backends import NAMES, available, select
 from jetlink.server.cache import EngineCache
 from jetlink.server.session import EngineHost, Session
@@ -269,10 +269,6 @@ def main(argv=None) -> int:
                  help='suspend the box (deep, USB wakes it) after this long with no '
                       f'gadget; 0 = never. In the car use {SLEEP_AFTER:.0f}. '
                       'Needs /sys/power writable in the container.')
-  p.add_argument('--keep-gpu-busy', choices=('auto', 'on', 'off'), default='auto',
-                 help='run a tiny GPU workload beside the model so the clock governor never sees an idle '
-                      'GPU between frames; auto = on for CoreML on a Mac, where it was measured '
-                      '(docs/backends.md)')
   p.add_argument('--cache', default=str(platform.default_cache_dir()),
                  help='engines and uploaded models; JETLINK_CACHE sets the default')
   p.add_argument('--control-socket', default=None, metavar='ADDR',
@@ -389,10 +385,6 @@ def main(argv=None) -> int:
   # parked from one that is simply gone.
   host = EngineHost(cache, pick_source(backend.name),
                     sleep_after=sleeper.after if sleeper is not None else 0.0)
-  keeper = None
-  if gpuclock.wanted(args.keep_gpu_busy, info['device']):
-    keeper = gpuclock.GpuClockKeeper()
-    keeper.start()
   control = None
   if args.control_socket:
     from jetlink.server.control import ControlServer
@@ -409,8 +401,6 @@ def main(argv=None) -> int:
     log.info("stopped")
   finally:
     host.close()
-    if keeper is not None:
-      keeper.close()
     if control is not None:
       control.close()
   return 0

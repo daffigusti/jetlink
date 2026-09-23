@@ -56,29 +56,6 @@ the current model preparation code.
 The mean is the average frame time. The p99 is the time at or below which 99% of
 frames complete. The maximum is the slowest frame.
 
-### Sustained load and the GPU clock
-
-The 390-frame numbers above cover 20 seconds. Past that, macOS lowers the GPU
-clock: a 20 ms model at 20 Hz leaves the GPU idle more than half the time, and
-after about 20 seconds of that the governor drops it from 1345 MHz to its
-340 MHz floor. Every frame then takes 65 ms and the clock does not come back.
-Measured on a 16-inch M3 Max with powermetrics; High Power Mode alone does not
-prevent it.
-
-The server keeps the clock up by running a tiny Metal workload beside the model
-(`--keep-gpu-busy`, on by default for CoreML on a Mac; `--keep-gpu-busy off`
-disables it). Over 6000 frames at 20 Hz on that M3 Max, 766 MB model:
-
-| | keeper off | keeper on, battery | keeper on, power adapter |
-| --- | ---: | ---: | ---: |
-| server-side GPU time, mean | 41.7 ms | 23.7 ms | 16.9 ms |
-| round trip p50 / p99 | 41.9 / 76.8 ms | 19.5 / 61.7 ms | 18.1 / 21.5 ms |
-| frames over the 50 ms budget | 42.6% | 8.8% | 0% |
-
-Keep the Mac on a power adapter in the car: on battery the clock still sags
-even with the keeper. The keeper costs one CPU core at the lowest priority and
-a few watts of GPU.
-
 ### How to measure
 
 `scripts/verify_parity.py` compares 32 frames against ONNX Runtime on the CPU,
