@@ -32,9 +32,13 @@ from jetlink.registry.catalog import NetworkError, RegistryError, VerifyError, i
 log = logging.getLogger('jetlink.registry')
 
 POINTER_URL = 'https://raw.githubusercontent.com/commaai/openpilot/{ref}/openpilot/selfdrive/modeld/models/big_driving_supercombo.onnx'
+# Hugging Face first: it serves objects from a CDN and comma is moving the
+# models there. GitLab has every object, older and PR-branch models included,
+# but serves them from one origin; measured from Indonesia at 270 KB/s against
+# 12.8 MB/s, and a 730 MB model at 270 KB/s outlives the connection.
 LFS_ENDPOINTS = (
-  'https://gitlab.com/commaai/openpilot-lfs.git/info/lfs',      # every object, older and PR-branch models included
-  'https://huggingface.co/commaai/openpilot-lfs.git/info/lfs',  # where comma is moving them; the current ones
+  'https://huggingface.co/commaai/openpilot-lfs.git/info/lfs',
+  'https://gitlab.com/commaai/openpilot-lfs.git/info/lfs',
 )
 LFS_MEDIA_TYPE = 'application/vnd.git-lfs+json'
 POINTER_TIMEOUT = 10.0
