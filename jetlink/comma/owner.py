@@ -200,6 +200,7 @@ class Owner:
     # hold), when the record was last written, and a failure writing it, said once
     self.mode: str | None = None
     self.last_configured = 0.0
+    self.best_advert = 0   # gadget.configured_held
     self.published = 0.0
     self.status_error: str | None = None
     # what this process never speaks the protocol to learn: the fields of the
@@ -503,13 +504,14 @@ class Owner:
     now = time.monotonic()
     state = gadget.udc_state()
     configured = state == 'configured'
-    if configured:
+    held, self.best_advert = gadget.configured_held(configured, self.best_advert)
+    if held:
       self.last_configured = now
     if self.dormant:
       # no enumeration during suspend; the CC line still tells a sleeping host from an unplugged one
       present = gadget.port_has_host()
     else:
-      present = configured or now - self.last_configured < gadget.PRESENCE_HOLD
+      present = held or now - self.last_configured < gadget.PRESENCE_HOLD
     return {
       'pid': os.getpid(),
       'at': now,

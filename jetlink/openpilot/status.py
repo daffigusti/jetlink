@@ -116,6 +116,7 @@ class Presence:
 
   def __init__(self):
     self._last_configured = 0.0
+    self._best_advert = 0
 
   def present(self) -> bool:
     """Is a host on the other end now: configured us, or did within
@@ -124,7 +125,8 @@ class Presence:
       # no enumeration during suspend; the CC line still tells a sleeping host from an unplugged one
       return gadget.port_has_host()
     now = time.monotonic()
-    if gadget.host_attached():
+    held, self._best_advert = gadget.configured_held(gadget.host_attached(), self._best_advert)
+    if held:
       self._last_configured = now
       return True
     return now - self._last_configured < gadget.PRESENCE_HOLD
