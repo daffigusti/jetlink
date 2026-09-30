@@ -150,28 +150,28 @@ class TestInitDevice(unittest.TestCase):
   sit at FIFO 54 on the frame loop's core."""
 
   def setUp(self):
-    self.pool = mock.Mock(name='get_worker_pool')
-    p = mock.patch.dict(sys.modules, fakes.fake_tinygrad(get_worker_pool=self.pool))
+    self.parallel = SimpleNamespace(value=8)
+    p = mock.patch.dict(sys.modules, fakes.fake_tinygrad(parallel=self.parallel))
     p.start()
     self.addCleanup(p.stop)
     self.log = fakes.RecordingLog()
 
-  def test_the_compile_pool_is_created_with_the_device(self):
+  def test_the_compile_pool_is_turned_off_with_the_device(self):
+    # started early instead, its eight idle workers cost 244 MB for the drive
     warp.init_device(self.log)
-    self.pool.assert_called_once_with()
+    self.assertEqual(self.parallel.value, 0)
     self.assertEqual(self.log.records, [])
 
-  def test_a_pool_that_will_not_start_is_logged_not_raised(self):
-    # An older tinygrad without the module, or PARALLEL=0, must not veto the accelerator.
-    self.pool.side_effect = RuntimeError('no pool')
-    warp.init_device(self.log)
+  def test_a_tinygrad_without_the_knob_is_logged_not_raised(self):
+    with mock.patch.dict(sys.modules, {'tinygrad.helpers': None}):
+      warp.init_device(self.log)
     self.assertEqual(len(self.log.lines('exception')), 1)
 
   def test_a_device_that_will_not_come_up_is_logged_not_raised(self):
     with mock.patch.object(fakes.FakeTensor, 'realize', side_effect=RuntimeError('no gpu')):
       warp.init_device(self.log)
     self.assertTrue(self.log.has('could not bring the gpu up', 'exception'))
-    self.pool.assert_called_once_with()
+    self.assertEqual(self.parallel.value, 0)
 
 
 class TestCallConvention(unittest.TestCase):
