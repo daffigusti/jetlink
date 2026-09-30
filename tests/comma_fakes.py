@@ -56,6 +56,11 @@ def voter(tmp: Path) -> Path:
   return tmp / 'voter'
 
 
+def icl_voter(tmp: Path) -> Path:
+  """The charger's USB_ICL voter, which vm caps; the script finds none until it is made."""
+  return tmp / 'icl'
+
+
 def run_script(tmp: Path, *args: str, timeout: float | None = None) -> subprocess.CompletedProcess:
   """jetlink-root.sh *args, as the user running the tests, on the fakes under `tmp`."""
   env = {
@@ -63,5 +68,6 @@ def run_script(tmp: Path, *args: str, timeout: float | None = None) -> subproces
     'JETLINK_PROC_SYS': str(tmp / 'sys'),
     'JETLINK_SYSCTL_PREV': str(record(tmp)),
     'JETLINK_POWER_ROLE_VOTER': str(voter(tmp)),
+    'JETLINK_USB_ICL_VOTER': str(icl_voter(tmp)),
   }
   return subprocess.run(['bash', str(root.SCRIPT), *args], env=env, capture_output=True, text=True, timeout=timeout)

@@ -21,7 +21,7 @@ from pathlib import Path
 import pytest
 
 from jetlink.comma import root
-from tests.comma_fakes import STOCK, TUNED, proc_sys, read_all, read_sys, record, run_script, voter
+from tests.comma_fakes import STOCK, TUNED, icl_voter, proc_sys, read_all, read_sys, record, run_script, voter
 
 REPO = Path(__file__).resolve().parents[1]
 
@@ -182,6 +182,7 @@ def test_restore_writes_only_vm_keys_and_numbers(tmp_path):
 
 def test_vm_apply_fails_when_a_key_will_not_take(tmp_path):
   proc_sys(tmp_path, STOCK)
+  icl_voter(tmp_path).mkdir()
   (tmp_path / 'sys' / 'vm' / 'min_free_kbytes').chmod(0o444)
   if os.access(tmp_path / 'sys' / 'vm' / 'min_free_kbytes', os.W_OK):
     pytest.skip('running as root')
@@ -190,6 +191,28 @@ def test_vm_apply_fails_when_a_key_will_not_take(tmp_path):
   assert result.stderr.strip().splitlines()[-1] == 'jetlink: could not set vm.min_free_kbytes=131072'
   # the others still took
   assert read_sys(tmp_path, 'vm.dirty_bytes') == TUNED['vm.dirty_bytes']
+
+
+def test_vm_caps_the_usb_input_while_the_link_is_on(tmp_path):
+  # a Mac on a C-to-C cable offered 3 A and the comma browned out running from it
+  proc_sys(tmp_path, STOCK)
+  icl = icl_voter(tmp_path)
+  icl.mkdir()
+  assert run_script(tmp_path, 'vm', 'apply').returncode == 0
+  assert (icl / 'force_val').read_text().strip() == '500000'
+  assert (icl / 'force_active').read_text().strip() == '1'
+  assert run_script(tmp_path, 'vm', 'restore').returncode == 0
+  assert (icl / 'force_active').read_text().strip() == '0'
+  assert (icl / 'force_val').read_text().strip() == '0'
+
+
+def test_vm_without_the_usb_voter_still_tunes_and_says_so(tmp_path):
+  proc_sys(tmp_path, STOCK)
+  result = run_script(tmp_path, 'vm', 'apply')
+  assert result.returncode == 0
+  assert 'could not cap the USB input' in result.stderr
+  assert read_all(tmp_path, TUNED) == TUNED
+  assert run_script(tmp_path, 'vm', 'restore').returncode == 0
 
 
 def test_port_hold_forces_the_voter_and_off_lets_it_go(tmp_path):

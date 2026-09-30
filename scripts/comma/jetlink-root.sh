@@ -12,7 +12,7 @@
 #   sudo scripts/comma/jetlink-root.sh check             # what is there now
 #   sudo scripts/comma/jetlink-root.sh teardown
 #   sudo scripts/comma/jetlink-root.sh port hold|off     # the USB-C port held as the device, or let go
-#   sudo scripts/comma/jetlink-root.sh vm apply|restore  # the link's VM tuning, or the stock values
+#   sudo scripts/comma/jetlink-root.sh vm apply|restore  # the link's VM tuning and USB power cap, or stock
 #
 # For the comma four and the comma 3X only. Both are SDM845 on the same AGNOS
 # kernel (4.9, dwc3 at a600000.dwc3), with configfs, FunctionFS and NCM built
@@ -79,6 +79,13 @@ PROC_SYS=${JETLINK_PROC_SYS:-/proc/sys}
 # the stock values to write back, one key=value a line, recorded by the first
 # apply and dropped by restore
 SYSCTL_PREV=${JETLINK_SYSCTL_PREV:-/dev/shm/jetlink-sysctl-prev}
+# vm also caps what the charger takes from the host over USB. A Mac on a C-to-C
+# cable offers 3 A over PD, and the charger then ran the comma from it rather
+# than the car: VBUS sagged to 4.6 V with the large model running and the PMIC
+# cut power (UVLO) 25 to 84 s after every join. At 500 mA the harness carries
+# the comma and the link stays SuperSpeed; an A-to-C cable offers 900 mA at most
+USB_ICL_VOTER=${JETLINK_USB_ICL_VOTER:-/sys/kernel/debug/pmic-votable/USB_ICL}
+USB_ICL_UA=500000
 
 usage() {
   echo "usage: $0 gadget [--ios] | net | check | teardown | port hold|off | vm apply|restore" >&2
@@ -479,12 +486,18 @@ vm_apply() {
   for pair in "${VM_SYSCTLS[@]}"; do
     sysctl_write "${pair%%=*}" "${pair#*=}" || failed=1
   done
+  # force_val first: forcing applies whatever force_val holds at that moment.
+  # Not a failure without the voter: the VM tuning above still stands
+  { echo "$USB_ICL_UA" > "$USB_ICL_VOTER/force_val" && echo 1 > "$USB_ICL_VOTER/force_active"; } 2>/dev/null ||
+    echo "jetlink: could not cap the USB input at $USB_ICL_VOTER" >&2
   return $failed
 }
 
 # Writes the record back line by line: a vm key and a number, nothing else.
 vm_restore() {
   local key value failed=0
+  # letting go applies the voters' own result, what PD negotiated
+  { echo 0 > "$USB_ICL_VOTER/force_active" && echo 0 > "$USB_ICL_VOTER/force_val"; } 2>/dev/null || true
   [[ -e "$SYSCTL_PREV" ]] || return 0
   while IFS='=' read -r key value; do
     if [[ "$key" =~ ^vm\.[a-z_]+$ && "$value" =~ ^[0-9]+$ ]]; then
