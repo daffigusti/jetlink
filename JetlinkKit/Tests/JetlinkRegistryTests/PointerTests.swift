@@ -136,11 +136,11 @@ struct LFSBatchTests {
     #expect(await LFS.resolve(endpoint: LFS.endpoints[0], pointer: pointer, session: failing.session) == nil)
   }
 
-  @Test func theEndpointsAreAskedInPythonsOrder() {
+  @Test func huggingFaceIsAskedBeforeGitLab() {
     #expect(
       LFS.endpoints == [
-        "https://gitlab.com/commaai/openpilot-lfs.git/info/lfs",
         "https://huggingface.co/commaai/openpilot-lfs.git/info/lfs",
+        "https://gitlab.com/commaai/openpilot-lfs.git/info/lfs",
         "https://huggingface.co/commaai/openpilot_driving_models.git/info/lfs",
       ])
     #expect(
