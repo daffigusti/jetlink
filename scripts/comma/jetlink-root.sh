@@ -17,7 +17,7 @@
 #   sudo scripts/comma/jetlink-root.sh udc apply|restore # the USB device controller kept a device, or stock
 #   sudo scripts/comma/jetlink-root.sh udc start|stop    # its device side turned on, or off
 #   sudo scripts/comma/jetlink-root.sh vm apply|restore  # the link's VM tuning, or the stock values
-#   sudo scripts/comma/jetlink-root.sh draw off|on       # no current drawn from the port (iOS), or the charger's own
+#   sudo scripts/comma/jetlink-root.sh draw off|cap|on   # no current drawn from the port (iOS), 500 mA (Mac, Jetson), or the charger's own
 #
 # For the comma four and the comma 3X only. Both are SDM845 on the same AGNOS
 # kernel (4.9, dwc3 at a600000.dwc3), with configfs, FunctionFS and NCM built
@@ -96,6 +96,12 @@ USB_PSY=${JETLINK_USB_PSY:-/sys/class/power_supply/usb}
 # present and the roles still settle, and those handlers stand down at 25 mA or
 # less. As the source the kernel votes the input to 0 itself.
 USB_ICL_VOTER=${JETLINK_USB_ICL_VOTER:-/sys/kernel/debug/pmic-votable/USB_ICL}
+# cap: for a USB link the host is a Mac or a Jetson. A Mac on a C-to-C cable
+# offers 3 A over PD, and the charger then ran the comma from it rather than
+# the car: VBUS sagged to 4.6 V with the large model running and the PMIC cut
+# power (UVLO) 25 to 84 s after every join. At 500 mA the harness carries the
+# comma and the link stays SuperSpeed; an A-to-C cable offers 900 mA at most
+USB_ICL_UA=500000
 
 # vm: loggerd's dirty pages pile up until the kernel reclaims them
 # synchronously, right while a FunctionFS transfer allocates its buffer: gadget
@@ -121,7 +127,7 @@ PROC_SYS=${JETLINK_PROC_SYS:-/proc/sys}
 SYSCTL_PREV=${JETLINK_SYSCTL_PREV:-/dev/shm/jetlink-sysctl-prev}
 
 usage() {
-  echo "usage: $0 gadget [--ios] | net | check | teardown | port hold|off|device|reset|source|sink | udc apply|restore|start|stop | vm apply|restore | draw off|on" >&2
+  echo "usage: $0 gadget [--ios] | net | check | teardown | port hold|off|device|reset|source|sink | udc apply|restore|start|stop | vm apply|restore | draw off|cap|on" >&2
   exit 2
 }
 
@@ -605,12 +611,13 @@ cmd_vm() {
   esac
 }
 
-# The port's input current while the link is iOS; see USB_ICL_VOTER. off forces
-# the limit to 0 and on gives the charger its own limit back. Like udc and vm,
+# The port's input current; see USB_ICL_VOTER. off forces the limit to 0 (iOS),
+# cap to 500 mA (a Mac or a Jetson) and on gives the charger its own limit back. Like udc and vm,
 # undone only by on, never at an exit; a reboot clears it.
 cmd_draw() {
   case "${1:-}" in
     off) force_voter "$USB_ICL_VOTER" 0 "to stop drawing from the port" || exit 1 ;;
+    cap) force_voter "$USB_ICL_VOTER" "$USB_ICL_UA" "to cap the port's draw" || exit 1 ;;
     on) release_voter "$USB_ICL_VOTER" || exit 1 ;;
     *) usage ;;
   esac

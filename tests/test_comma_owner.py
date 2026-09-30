@@ -574,7 +574,7 @@ class TestTheToggle(OwnerTest):
     o = self.owner(presented=False)
     with mock.patch.object(gadget, 'link_configured', return_value=False):
       o.step()
-    self.assertEqual([c.args[0] for c in self.root_run.call_args_list], ['gadget', 'vm', 'udc'])
+    self.assertEqual([c.args[0] for c in self.root_run.call_args_list], ['gadget', 'vm', 'udc', 'draw'])
 
   def test_the_port_is_kept_a_device_while_the_link_is_on(self):
     o = self.owner()
@@ -669,13 +669,13 @@ class TestVmTuning(OwnerTest):
 
 
 class TestDraw(OwnerTest):
-  """No current drawn from the port while the link is iOS, kept on exit like the tuning."""
+  """The port's draw while the link is on: none for iOS, 500 mA otherwise; kept on exit like the tuning."""
 
-  def test_usb_leaves_it_alone(self):
+  def test_usb_caps_it(self):
     o = self.owner()
     o.step()
     o.step()
-    self.assertEqual(self.root_calls('draw'), [])
+    self.assertEqual(self.root_calls('draw'), ['cap'])
 
   def test_ios_cuts_it_once_and_an_exit_keeps_it(self):
     self.write('JetlinkLink', b'2')
@@ -686,8 +686,8 @@ class TestDraw(OwnerTest):
     o.run()
     self.assertEqual(self.root_calls('draw'), ['off'])
 
-  def test_leaving_ios_gives_it_back(self):
-    for setting in (b'1', b'0'):
+  def test_changing_between_ios_and_usb_swaps_it(self):
+    for setting, then in ((b'1', 'cap'), (b'0', 'on')):
       with self.subTest(setting=setting):
         self.root_run.reset_mock()
         self.write('JetlinkLink', b'2')
@@ -695,7 +695,14 @@ class TestDraw(OwnerTest):
         o.step()
         self.write('JetlinkLink', setting)
         o.step()
-        self.assertEqual(self.root_calls('draw'), ['off', 'on'])
+        self.assertEqual(self.root_calls('draw'), ['off', then])
+
+  def test_turning_the_link_off_gives_it_back(self):
+    o = self.owner()
+    o.step()
+    self.write('JetlinkLink', b'0')
+    o.step()
+    self.assertEqual(self.root_calls('draw')[-1], 'on')
 
   def test_a_failure_is_not_retried_every_step(self):
     self.write('JetlinkLink', b'2')

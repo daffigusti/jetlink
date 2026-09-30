@@ -607,8 +607,7 @@ class Owner:
       if self.tuned:
         root.run('vm', 'restore')
         root.run('udc', 'restore')
-        if self.tuned == 'ios':
-          root.run('draw', 'on', timeout=root.PORT_TIMEOUT)
+        root.run('draw', 'on', timeout=root.PORT_TIMEOUT)
         self.tuned = None
       self.port.off()
       return
@@ -616,8 +615,9 @@ class Owner:
     if self.tuned != mode:
       # jetlink-root.sh vm: the recording VM tuning the gadget's reads need;
       # udc: the USB device side kept on for a host that powers the port
-      # (port.py); draw, iOS only: no current drawn from the port, which an
-      # iPhone cannot supply. While the link is on. After the step, so the
+      # (port.py); draw: no current drawn from the port for an iPhone, which
+      # cannot supply it, and at most 500 mA for a Mac or a Jetson, whose 3 A
+      # offer browned the comma out. While the link is on. After the step, so the
       # first gadget does not wait on them. Put back only when the link is
       # turned off or leaves iOS, never on exit: manager stops this at
       # ignition, just as the contention starts, and a phone plugged in before
@@ -629,8 +629,8 @@ class Owner:
       if mode == 'ios':
         if root.run('draw', 'off', timeout=root.PORT_TIMEOUT):
           gadget.log.info("jetlink: drawing no current from the USB-C port, for an iPhone")
-      elif self.tuned == 'ios':
-        root.run('draw', 'on', timeout=root.PORT_TIMEOUT)
+      else:
+        root.run('draw', 'cap', timeout=root.PORT_TIMEOUT)
       self.tuned = mode
 
   def ensure_lender(self) -> None:

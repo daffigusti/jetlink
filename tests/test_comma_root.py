@@ -204,6 +204,8 @@ def test_vm_apply_fails_when_a_key_will_not_take(tmp_path):
   (voter, ('port', 'hold'), '1'),
   # the input current limit: 0 suspends the input
   (usb_icl, ('draw', 'off'), '0'),
+  # a Mac's 3 A offer browned the comma out; 500 mA lets the harness carry it
+  (usb_icl, ('draw', 'cap'), '500000'),
 ])
 def test_a_voter_is_forced_and_let_go(tmp_path, lever, force, value):
   lever = lever(tmp_path)
@@ -211,7 +213,7 @@ def test_a_voter_is_forced_and_let_go(tmp_path, lever, force, value):
   assert run_script(tmp_path, *force).returncode == 0
   assert (lever / 'force_val').read_text().strip() == value
   assert (lever / 'force_active').read_text().strip() == '1'
-  release = {'hold': 'off', 'off': 'on'}[force[1]]
+  release = {'hold': 'off', 'off': 'on', 'cap': 'on'}[force[1]]
   assert run_script(tmp_path, force[0], release).returncode == 0
   assert (lever / 'force_active').read_text().strip() == '0'
   assert (lever / 'force_val').read_text().strip() == '0'
@@ -225,6 +227,7 @@ def test_a_voter_is_forced_and_let_go(tmp_path, lever, force, value):
   (('port', 'source'), None, 'did not give up the source role'),
   (('port', 'reset'), None, 'could not reset USB PD'),
   (('draw', 'off'), None, 'could not force'),
+  (('draw', 'cap'), None, 'could not force'),
   (('draw', 'on'), None, 'could not release'),
   (('udc', 'start'), None, 'could not start the USB device controller'),
   (('udc', 'stop'), None, 'could not stop the USB device controller'),

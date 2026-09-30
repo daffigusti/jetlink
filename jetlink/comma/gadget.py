@@ -316,7 +316,7 @@ def host_advert() -> int | None:
   Pulling the cable out at the host end is no disconnect on a comma 3X: VBUS
   stays up and the UDC reads configured until the next plug. What does change
   is this, a Mac's 3 A falling to default. See configured_held."""
-  mode = _read(TYPEC_MODE)
+  mode = read(TYPEC_MODE)
   if not mode:
     return None
   return next((rank for name, rank in _ADVERTS.items() if name in mode), 0)
