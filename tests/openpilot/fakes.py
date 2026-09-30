@@ -323,7 +323,7 @@ def fake_jit(fn=None, prune=False):
   return fn
 
 
-def fake_tinygrad(get_worker_pool=None) -> dict[str, ModuleType]:
+def fake_tinygrad(parallel=None) -> dict[str, ModuleType]:
   """sys.modules entries for what jetlink imports of tinygrad; patch them in
   with mock.patch.dict(sys.modules, fake_tinygrad())."""
   def module(name, **attrs):
@@ -336,6 +336,5 @@ def fake_tinygrad(get_worker_pool=None) -> dict[str, ModuleType]:
     'tinygrad.device': module('tinygrad.device', Device=FakeDevice),
     'tinygrad.engine': module('tinygrad.engine'),
     'tinygrad.engine.jit': module('tinygrad.engine.jit', TinyJit=fake_jit),
-    'tinygrad.engine.worker': module('tinygrad.engine.worker',
-                                     get_worker_pool=get_worker_pool or mock.Mock(name='get_worker_pool')),
+    'tinygrad.helpers': module('tinygrad.helpers', PARALLEL=parallel or SimpleNamespace(value=8)),
   }

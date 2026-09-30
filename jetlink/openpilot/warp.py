@@ -58,12 +58,16 @@ def init_device(log) -> None:
     log.exception("jetlink: could not bring the gpu up before modeld goes realtime")
   # the same trap for tinygrad's compile pool (engine/worker.py): created on
   # the first compile, after modeld goes realtime, its handler threads sat at
-  # SCHED_FIFO 54 on core 7. An older tinygrad or PARALLEL=0 is not a failure
+  # SCHED_FIFO 54 on core 7. Starting the pool here instead kept eight idle
+  # workers resident for the drive, 244 MB on a 3.6 GB comma 3X, and tipped it
+  # into the Low Memory alert. The warp is a build product, so nothing here
+  # compiles on a normal boot: no pool at all, and a cache miss compiles
+  # in-process. An older tinygrad without the knob is not a failure
   try:
-    from tinygrad.engine.worker import get_worker_pool
-    get_worker_pool()
+    from tinygrad.helpers import PARALLEL
+    PARALLEL.value = 0
   except Exception:
-    log.exception("jetlink: could not start tinygrad's compile pool before modeld goes realtime")
+    log.exception("jetlink: could not turn tinygrad's compile pool off before modeld goes realtime")
 
 
 class Warps:
