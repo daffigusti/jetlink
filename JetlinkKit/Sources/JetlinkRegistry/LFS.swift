@@ -43,8 +43,8 @@ public struct Pointer: Sendable, Equatable, Hashable {
 /// folder that id starts. That repo speaks the LFS batch protocol too, so it
 /// is one more endpoint to ask.
 ///
-/// This mirrors `jetlink/registry/lfs.py`: same URLs, same endpoint order,
-/// same verify rules.
+/// This mirrors `jetlink/registry/lfs.py`: same URLs and verify rules; the
+/// endpoint order puts Hugging Face first.
 public enum LFS {
   public static let bigONNX = "big_driving_supercombo.onnx"
   public static let pointerURLTemplate = "https://raw.githubusercontent.com/commaai/openpilot/{ref}/openpilot/selfdrive/modeld/models/" + bigONNX
@@ -52,9 +52,14 @@ public enum LFS {
   public static let commitPatchURLTemplate = "https://github.com/commaai/openpilot/commit/{ref}.patch"
   public static let drivingModelsRepo = "commaai/openpilot_driving_models"
   public static let drivingModelsTreeURL = "https://huggingface.co/api/models/\(drivingModelsRepo)/tree/main"
+  /// Hugging Face first: it serves objects from a CDN and comma is moving the
+  /// models there. GitLab has every object, older and PR-branch models
+  /// included, but serves them from one origin; measured from Indonesia at
+  /// 270 KB/s against 12.8 MB/s, and a 730 MB model at 270 KB/s outlives the
+  /// connection.
   public static let endpoints = [
-    "https://gitlab.com/commaai/openpilot-lfs.git/info/lfs",  // every object, older and PR-branch models included
     "https://huggingface.co/commaai/openpilot-lfs.git/info/lfs",  // where comma is moving them; the current ones
+    "https://gitlab.com/commaai/openpilot-lfs.git/info/lfs",  // every object, older and PR-branch models included
     "https://huggingface.co/\(drivingModelsRepo).git/info/lfs",  // the exports behind a precompiled pkl
   ]
   public static let mediaType = "application/vnd.git-lfs+json"
