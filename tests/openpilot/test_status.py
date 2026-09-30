@@ -190,6 +190,8 @@ class TestPresence(OpenpilotTest):
       self.patch(gadget, name, self.tmp / name.lower())
     self.cc = self.tmp / 'cc'
     self.patch(gadget, 'CC_ORIENTATION', self.cc)
+    self.mode = self.tmp / 'typec_mode'
+    self.patch(gadget, 'TYPEC_MODE', self.mode)
 
   def test_dormant_counts_as_present_without_a_host(self):
     with mock.patch.object(gadget, 'host_attached', return_value=False):
@@ -209,6 +211,15 @@ class TestPresence(OpenpilotTest):
       assert self.parts.presence.present()
       with mock.patch.object(status.time, 'monotonic', return_value=status.time.monotonic() + gadget.PRESENCE_HOLD):
         assert not self.parts.presence.present()
+
+  def test_a_host_unplugged_at_its_end_is_gone_though_the_udc_says_configured(self):
+    later = status.time.monotonic() + 2 * gadget.PRESENCE_HOLD
+    with mock.patch.object(gadget, 'host_attached', return_value=True):
+      self.mode.write_text('Source attached (high current)')
+      assert self.parts.presence.present()
+      self.mode.write_text('Source attached (default current)')
+      with mock.patch.object(status.time, 'monotonic', return_value=later):
+        assert not self.parts.presence.present(), 'a Mac unplugged at its end still read as present'
 
   def test_the_port_is_the_cc_pin(self):
     self.assertIsNone(status.usb_port())

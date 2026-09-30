@@ -46,6 +46,7 @@ class OwnerTest(unittest.TestCase):
                         ('OWNER_LOCK', self.tmp / 'run' / 'owner.lock'),
                         ('SERVER', self.tmp / 'run' / 'server.json'),
                         ('CC_ORIENTATION', self.tmp / 'cc'),
+                        ('TYPEC_MODE', self.tmp / 'typec_mode'),
                         ('link_configured', mock.Mock(return_value=True)),
                         ('host_attached', mock.Mock(return_value=True)),
                         ('udc_state', mock.Mock(return_value='configured')),
@@ -1400,6 +1401,29 @@ class TestTheStatusRecord(OwnerTest):
     self.assertIsNone(self.record(o)['speed'])
     o.last_configured -= gadget.PRESENCE_HOLD
     self.assertFalse(self.record(o)['present'])
+
+  def test_a_host_unplugged_at_its_end_is_gone_though_the_udc_says_configured(self):
+    # a comma 3X sees no disconnect then; the Mac's 3 A falling to default is the unplug
+    o = self.owner()
+    for mode in ('Source attached (medium current)', 'Source attached (high current)'):
+      gadget.TYPEC_MODE.write_text(mode)
+      self.assertTrue(self.record(o)['present'])
+    gadget.TYPEC_MODE.write_text('Source attached (default current)')
+    o.last_configured -= gadget.PRESENCE_HOLD
+    self.assertFalse(self.record(o)['present'], 'a Mac unplugged at its end still read as present')
+    # the replug is a real disconnect and a fresh attach
+    gadget.udc_state.return_value = None
+    self.assertFalse(self.record(o)['present'])
+    gadget.udc_state.return_value = 'configured'
+    self.assertTrue(self.record(o)['present'])
+
+  def test_a_host_that_only_advertises_the_default_reads_as_before(self):
+    o = self.owner()
+    gadget.TYPEC_MODE.write_text('Source attached (default current)')
+    self.assertTrue(self.record(o)['present'])
+    gadget.TYPEC_MODE.unlink()   # a port that cannot say
+    o.last_configured -= gadget.PRESENCE_HOLD
+    self.assertTrue(self.record(o)['present'])
 
   def test_a_sleeping_host_is_present_while_the_cable_says_so(self):
     o = self.owner(presented=False)

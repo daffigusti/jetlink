@@ -154,6 +154,7 @@ GADGET_STATUS = Path("/dev/shm/jetlink-gadget")
 # root owns and every build rewrites
 LENDER_STATUS = Path("/dev/shm/jetlink-lender")
 CC_ORIENTATION = Path('/sys/class/power_supply/usb/typec_cc_orientation')
+TYPEC_MODE = Path('/sys/class/power_supply/usb/typec_mode')
 # the owner's pid while it has released the gadget on purpose so the Jetson can
 # sleep. Presence comes from this, not the UDC; a marker whose writer is dead is
 # a leftover from a kill
@@ -172,8 +173,10 @@ STARTS = Path("/dev/shm/jetlink/starts.json")
 # held with flock by the owner for its whole life, so there is only ever one
 OWNER_LOCK = Path("/dev/shm/jetlink/owner.lock")
 # what the server's last hello said (lending.SERVER_FIELDS), kept apart from
-# the status record so a clean stop leaves it for the next owner
-SERVER = Path("/dev/shm/jetlink/server.json")
+# the status record so a clean stop leaves it for the next owner. On /data so
+# a reboot does too: from /dev/shm it went back to "sleeps", and the owner let
+# an always-on Mac's gadget go a minute into every park until the next drive
+SERVER = Path("/data/jetlink-server.json")
 # how long a host that stopped reading configured still counts as there. The
 # owner holds the gadget for as long as the link is enabled, so presence no
 # longer blinks at every handover; what is left to bridge is a USB3 link
@@ -301,6 +304,34 @@ def cc_orientation() -> int | None:
 def port_has_host() -> bool:
   """Does the USB-C port controller see a host on the cable?"""
   return bool(cc_orientation())
+
+
+_ADVERTS = {'default current': 1, 'medium current': 2, 'high current': 3}
+
+
+def host_advert() -> int | None:
+  """How much current the host on the cable advertises: 1 default, 2 medium
+  (1.5 A), 3 high (3 A), 0 for no source. None where the kernel does not say.
+
+  Pulling the cable out at the host end is no disconnect on a comma 3X: VBUS
+  stays up and the UDC reads configured until the next plug. What does change
+  is this, a Mac's 3 A falling to default. See configured_held."""
+  mode = _read(TYPEC_MODE)
+  if not mode:
+    return None
+  return next((rank for name, rank in _ADVERTS.items() if name in mode), 0)
+
+
+def configured_held(configured: bool, best: int) -> tuple[bool, int]:
+  """Is a configured UDC a host still there, and the best advertisement seen
+  on this attach? A host whose advertisement falls below what it offered was
+  unplugged at its end, whatever the UDC says, which left a Mac's icon green
+  for half an hour. One that only ever advertises the default reads as before."""
+  if not configured:
+    return False, 0   # the next attach sets its own bar
+  advert = host_advert()
+  best = max(best, advert or 0)
+  return advert is None or advert >= best, best
 
 
 # how long the UDC may sit half enumerated with a host on the cable before the
